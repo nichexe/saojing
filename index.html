@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>❤️扫婧❤️</title>
+<style>
+    html, body {
+        margin: 0;
+        min-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at top, #fdf0f4 0%, #f7d4e3 45%, #eecfe6 100%);
+        font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #2c2136;
+    }
+    #container {
+        width: 680px;
+        padding: 18px;
+        border-radius: 24px;
+        background: rgba(255,255,255,0.95);
+        box-shadow: 0 24px 70px rgba(56, 31, 84, 0.18);
+    }
+    .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+    }
+    .toolbar h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0.4px;
+    }
+    .stats {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        font-size: 14px;
+    }
+    .stats span {
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
+    }
+    #game-board {
+        display: block;
+        border-radius: 18px;
+        background: linear-gradient(180deg, #fdf8ff 0%, #eeebf8 100%);
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
+    }
+    .hint {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #6e5a78;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+<div id="container">
+    <div class="toolbar">
+        <h1>❤️扫婧❤️</h1>
+        <div class="stats">
+            <span>剩余雷数: <strong id="mineCount">0</strong></span>
+            <span>状态: <strong id="statusText">婧与雷</strong></span>
+            <span>时间: <strong id="timer">0</strong> 秒</span>
+            <button id="restartBtn">重新开婧</button>
+        </div>
+    </div>
+    <canvas id="game-board" width="600" height="600"></canvas>
+    <div class="hint">左键点开                                                            右键标记</div>
+</div>
+<script>
+const canvas = document.getElementById('game-board');
+const ctx = canvas.getContext('2d');
+const mineCountEl = document.getElementById('mineCount');
+const statusText = document.getElementById('statusText');
+const timerEl = document.getElementById('timer');
+const restartBtn = document.getElementById('restartBtn');
+
+const COLS = 30;
+const ROWS = 30;
+const CELL = 20;
+const MINES = 100;
+const boardWidth = COLS * CELL;
+const boardHeight = ROWS * CELL;
+
+let grid = [];
+let revealed = [];
+let flagged = [];
+let started = false;
+let gameOver = false;
+let timer = 0;
+let timerId = null;
+let remainingMines = MINES;
+
+const imgUnknown = new Image();
+const imgMine = new Image();
+imgUnknown.src = 'jing.jpg';
+imgMine.src = 'lei.png';
+
+function createGrid() {
+    grid = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => 0));
+    revealed = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => false));
+    flagged = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => false));
+    started = false;
+    gameOver = false;
+    timer = 0;
+    remainingMines = MINES;
+    updateStatus('婧与雷');
+    mineCountEl.textContent = remainingMines;
+    timerEl.textContent = timer;
+    clearInterval(timerId);
+    drawBoard();
+}
+
+function placeMines(firstRow, firstCol) {
+    let placed = 0;
+    while (placed < MINES) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        if ((r === firstRow && c === firstCol) || grid[r][c] === 'M') continue;
+        grid[r][c] = 'M';
+        placed++;
+    }
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (grid[r][c] === 'M') continue;
+            let count = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    const nr = r + dr;
+                    const nc = c + dc;
+                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && grid[nr][nc] === 'M') {
+                        count++;
+                    }
+                }
+            }
+            grid[r][c] = count;
+        }
+    }
+}
+
+function startTimer() {
+    if (timerId) return;
+    timerId = setInterval(() => {
+        timer += 1;
+        timerEl.textContent = timer;
+    }, 1000);
+}
+
+function updateStatus(text) {
+    statusText.textContent = text;
+}
+
+function drawBoard() {
+    ctx.clearRect(0, 0, boardWidth, boardHeight);
+    ctx.fillStyle = '#fbf5ff';
+    ctx.fillRect(0, 0, boardWidth, boardHeight);
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const x = c * CELL;
+            const y = r * CELL;
+            ctx.strokeStyle = '#c7b9d4';
+            ctx.strokeRect(x, y, CELL, CELL);
+            if (revealed[r][c]) {
+                ctx.fillStyle = '#ece6f4';
+                ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+                if (grid[r][c] === 'M') {
+                    if (imgMine.complete) {
+                        ctx.drawImage(imgMine, x + 2, y + 2, CELL - 4, CELL - 4);
+                    }
+                } else if (grid[r][c] > 0) {
+                    ctx.fillStyle = getNumberColor(grid[r][c]);
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(grid[r][c], x + CELL / 2, y + CELL / 2);
+                }
+            } else {
+                if (imgUnknown.complete) {
+                    ctx.drawImage(imgUnknown, x + 1, y + 1, CELL - 2, CELL - 2);
+                } else {
+                    ctx.fillStyle = '#d2bedf';
+                    ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+                }
+                if (flagged[r][c]) {
+                    ctx.fillStyle = '#d03367';
+                    ctx.beginPath();
+                    ctx.moveTo(x + CELL / 2 - 4, y + 6);
+                    ctx.lineTo(x + CELL / 2 + 6, y + CELL / 2);
+                    ctx.lineTo(x + CELL / 2 - 4, y + CELL - 6);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+        }
+    }
+}
+
+function getNumberColor(n) {
+    switch (n) {
+        case 1: return '#3b5df2';
+        case 2: return '#2b9151';
+        case 3: return '#d6374d';
+        case 4: return '#4b37a0';
+        case 5: return '#a13a3a';
+        case 6: return '#2b7f8d';
+        case 7: return '#3d3d3d';
+        case 8: return '#6c6c6c';
+        default: return '#312958';
+    }
+}
+
+function revealCell(row, col) {
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+    if (revealed[row][col] || flagged[row][col] || gameOver) return;
+    if (!started) {
+        placeMines(row, col);
+        started = true;
+        updateStatus('婧行中');
+        startTimer();
+    }
+    revealed[row][col] = true;
+    if (grid[row][col] === 'M') {
+        endGame(false);
+        return;
+    }
+    if (grid[row][col] === 0) {
+        for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+                if (dr !== 0 || dc !== 0) {
+                    revealCell(row + dr, col + dc);
+                }
+            }
+        }
+    }
+    checkWin();
+}
+
+function toggleFlag(row, col) {
+    if (revealed[row][col] || gameOver) return;
+    flagged[row][col] = !flagged[row][col];
+    remainingMines += flagged[row][col] ? -1 : 1;
+    mineCountEl.textContent = remainingMines;
+    drawBoard();
+    checkWin();
+}
+
+function checkWin() {
+    let unrevealedCount = 0;
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (!revealed[r][c]) unrevealedCount++;
+        }
+    }
+    if (unrevealedCount === MINES && !gameOver) {
+        endGame(true);
+    }
+}
+
+function endGame(win) {
+    gameOver = true;
+    clearInterval(timerId);
+    timerId = null;
+    updateStatus(win ? 'lj太少了' : 'YOU PLEASE~~');
+    if (!win) {
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                if (grid[r][c] === 'M') revealed[r][c] = true;
+            }
+        }
+    }
+    drawBoard();
+}
+
+function getCellFromEvent(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const col = Math.floor(x / CELL);
+    const row = Math.floor(y / CELL);
+    return { row, col };
+}
+
+canvas.addEventListener('mousedown', event => {
+    event.preventDefault();
+    if (gameOver) return;
+    const { row, col } = getCellFromEvent(event);
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+    if (event.button === 0) {
+        revealCell(row, col);
+    } else if (event.button === 2) {
+        toggleFlag(row, col);
+    }
+    drawBoard();
+});
+
+canvas.addEventListener('contextmenu', event => {
+    event.preventDefault();
+});
+
+restartBtn.addEventListener('click', () => {
+    createGrid();
+});
+
+imgUnknown.onload = drawBoard;
+imgMine.onload = drawBoard;
+
+createGrid();
+</script>
+</body>
+</html>
